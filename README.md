@@ -1,373 +1,447 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
-import { getFirestore, collection, doc, onSnapshot, updateDoc, setDoc, query } from 'firebase/firestore';
-import { 
-  Gift, ShoppingBag, Info, X, Heart, Check, Copy, 
-  QrCode, ArrowRight, Bed, Utensils, Zap, ChevronLeft, 
-  Palette, ShowerHead, Armchair, Star, Sparkles, Clock
-} from 'lucide-react';
-
-// Configuração do Firebase utilizando as variáveis de ambiente fornecidas
-const firebaseConfig = JSON.parse(__firebase_config);
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'daniel-eduarda-sicilian-final';
-
-// Elementos Decorativos Animados
-const FloatingElement = ({ children, className, delay = "0s" }) => (
-  <div className={`absolute pointer-events-none animate-float ${className}`} style={{ animationDelay: delay }}>
-    {children}
-  </div>
-);
-
-const LemonSVG = () => (
-  <svg viewBox="0 0 100 100" className="w-16 h-16 md:w-24 md:h-24 opacity-20">
-    <circle cx="50" cy="50" r="30" fill="#FACC15" />
-    <path d="M50 20C50 20 55 10 70 15" stroke="#4D7C0F" strokeWidth="3" strokeLinecap="round" />
-    <path d="M45 45Q50 40 55 45" stroke="white" strokeWidth="1" strokeLinecap="round" opacity="0.5"/>
-  </svg>
-);
-
-const LeafSVG = () => (
-  <svg viewBox="0 0 100 100" className="w-12 h-12 md:w-20 md:h-20 opacity-10">
-    <path d="M10 90C10 90 40 80 50 50C60 20 90 10 90 10M90 10C90 10 80 40 50 50C20 60 10 90 10 90" fill="#4D7C0F" />
-  </svg>
-);
-
-const CATEGORIES = [
-  { id: 'Cozinha', name: 'Cozinha', icon: Utensils, description: 'Eletroportáteis' },
-  { id: 'Quarto', name: 'Quarto', icon: Bed, description: 'Conforto & Cama' },
-  { id: 'Sala', name: 'Sala', icon: Armchair, description: 'Estar & Estilo' },
-  { id: 'Banheiro', name: 'Banheiro', icon: ShowerHead, description: 'Banho & Spa' },
-  { id: 'Eletros', name: 'Eletros', icon: Zap, description: 'Tecnologia' },
-  { id: 'Decoração', name: 'Decoração', icon: Palette, description: 'Toque Final' }
-];
-
-const INITIAL_GIFTS = [
-  { id: 'f1', title: 'Geladeira Frost Free Brastemp Inox', price: 'R$ 2.890,00', category: 'Cozinha', image: 'https://images.unsplash.com/photo-1571175452281-04a1fb1f24d9?q=80&w=800&auto=format&fit=crop', description: 'Design moderno com painel eletrônico externo.' },
-  { id: 'f2', title: 'Jogo de Panelas Le Creuset Amarelo', price: 'R$ 2.450,00', category: 'Cozinha', image: 'https://images.unsplash.com/photo-1584990344616-3b94b305740a?q=80&w=800&auto=format&fit=crop', description: 'Tradição e performance no tom Limão Siciliano.' },
-  { id: 'f3', title: 'Aparelho de Jantar Majólica 42pçs', price: 'R$ 1.180,00', category: 'Cozinha', image: 'https://images.unsplash.com/photo-1610701596007-11502861dcfa?q=80&w=800&auto=format&fit=crop', description: 'Estampa clássica mediterrânica em azul e branco.' },
-  { id: 'f4', title: 'Mesa de Centro Madeira Natural', price: 'R$ 1.450,00', category: 'Sala', image: 'https://images.unsplash.com/photo-1533090161767-e6ffed986c88?q=80&w=800&auto=format&fit=crop', description: 'Minimalismo orgânico para o centro da nossa sala.' },
-  { id: 'f5', title: 'Tapete Artesanal Azul Navy', price: 'R$ 1.850,00', category: 'Sala', image: 'https://images.unsplash.com/photo-1575414003591-ece8d0416c7a?q=80&w=800&auto=format&fit=crop', description: 'Toque macio com fibras naturais de alta qualidade.' },
-  { id: 'f6', title: 'Kit Banho Spa Buddemeyer Luxo', price: 'R$ 620,00', category: 'Banheiro', image: 'https://images.unsplash.com/photo-1560343776-97e7d202ff0e?q=80&w=800&auto=format&fit=crop', description: 'Toalhas em algodão egípcio de extrema absorção.' },
-  { id: 'f7', title: 'Jogo de Cama 1000 Fios King', price: 'R$ 1.350,00', category: 'Quarto', image: 'https://images.unsplash.com/photo-1522771739844-6a9f6d5f14af?q=80&w=800&auto=format&fit=crop', description: 'A suavidade do puro algodão para o nosso descanso.' },
-  { id: 'f8', title: 'Smart TV 55" 4K Samsung Crystal', price: 'R$ 2.680,00', category: 'Eletros', image: 'https://images.unsplash.com/photo-1593784991095-a205029471b6?q=80&w=800&auto=format&fit=crop', description: 'Resolução incrível para nossos momentos de cinema.' }
-];
-
-export default function App() {
-  const [user, setUser] = useState(null);
-  const [gifts, setGifts] = useState([]);
-  const [view, setView] = useState('home');
-  const [activeCategory, setActiveCategory] = useState(null);
-  const [selectedGift, setSelectedGift] = useState(null);
-  const [guestName, setGuestName] = useState('');
-  const [pixStep, setPixStep] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [showSuccess, setShowSuccess] = useState(false);
-  const [daysLeft, setDaysLeft] = useState(0);
-
-  const weddingDate = new Date('2026-06-09T00:00:00');
-  const pixKey = "62998808828";
-
-  useEffect(() => {
-    const calculate = () => {
-      const now = new Date();
-      const diff = weddingDate.getTime() - now.getTime();
-      setDaysLeft(Math.ceil(diff / (1000 * 60 * 60 * 24)));
-    };
-    calculate();
-    const interval = setInterval(calculate, 3600000);
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    const initAuth = async () => {
-      try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
-      } catch (err) { console.error("Erro na autenticação:", err); }
-    };
-    initAuth();
-    return onAuthStateChanged(auth, setUser);
-  }, []);
-
-  useEffect(() => {
-    if (!user) return;
-    const giftsRef = collection(db, 'artifacts', appId, 'public', 'data', 'gifts');
-    const unsubscribe = onSnapshot(query(giftsRef), (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      if (data.length === 0) {
-        INITIAL_GIFTS.forEach(g => setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'gifts', g.id), { ...g, claimedBy: null }));
-      } else {
-        setGifts(data);
-      }
-    });
-    return () => unsubscribe();
-  }, [user]);
-
-  const confirmReservation = async () => {
-    if (!guestName.trim() || !selectedGift) return;
-    const giftRef = doc(db, 'artifacts', appId, 'public', 'data', 'gifts', selectedGift.id);
-    try {
-      await updateDoc(giftRef, { claimedBy: guestName, claimedAt: new Date().toISOString() });
-      setSelectedGift(null);
-      setPixStep(false);
-      setShowSuccess(true);
-      setGuestName('');
-      setTimeout(() => setShowSuccess(false), 5000);
-    } catch (err) { console.error("Erro ao atualizar:", err); }
-  };
-
-  const copyPix = () => {
-    const el = document.createElement('textarea');
-    el.value = pixKey;
-    document.body.appendChild(el);
-    el.select();
-    document.execCommand('copy');
-    document.body.removeChild(el);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const availableGifts = gifts.filter(g => !g.claimedBy);
-  const currentViewGifts = useMemo(() => {
-    if (!activeCategory) return [];
-    return availableGifts.filter(g => g.category === activeCategory.id);
-  }, [availableGifts, activeCategory]);
-
-  return (
-    <div className="min-h-screen bg-[#FDFCFB] text-[#1B365D] font-serif relative overflow-x-hidden selection:bg-[#FACC15]/30">
-
-      {/* Elementos Decorativos de Fundo */}
-      <FloatingElement className="-left-10 top-20" delay="0s"><LemonSVG /></FloatingElement>
-      <FloatingElement className="-right-10 top-60" delay="2s"><LemonSVG /></FloatingElement>
-      <FloatingElement className="left-10 bottom-40" delay="4s"><LeafSVG /></FloatingElement>
-      <FloatingElement className="right-20 bottom-10" delay="1s"><LeafSVG /></FloatingElement>
-
-      {/* Header Principal */}
-      <header className="relative pt-16 pb-16 text-center px-6 z-20 bg-white/60 backdrop-blur-sm border-b-[6px] border-[#1B365D] shadow-lg">
-        <div className="mb-8">
-          <div className="inline-flex items-center space-x-3 bg-[#1B365D] text-[#FACC15] px-8 py-3 rounded-full shadow-2xl animate-pulse">
-            <Clock size={16} />
-            <span className="text-[11px] uppercase tracking-[0.2em] font-sans font-black">
-              Faltam {daysLeft} dias para o Sim!
-            </span>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-center space-x-3 mb-6">
-          <div className="h-px w-12 bg-[#FACC15]"></div>
-          <Heart className="w-5 h-5 fill-[#FACC15] text-[#FACC15]" />
-          <div className="h-px w-12 bg-[#FACC15]"></div>
-        </div>
-
-        <h1 className="text-5xl md:text-8xl font-light tracking-tighter mb-4 text-[#1B365D]">
-          Daniel <span className="text-[#FACC15] italic">&</span> Eduarda
-        </h1>
-        <p className="text-[12px] uppercase tracking-[0.6em] text-[#1B365D]/50 font-sans font-black">09 de Junho de 2026</p>
-      </header>
-
-      {/* Conteúdo Principal */}
-      <main className="max-w-4xl mx-auto px-6 py-16 relative z-10">
+<!DOCTYPE html>
+<html lang="pt-pt">
+<head>
+    <meta charset="UTF-8">
+    <!-- Meta tag essencial para responsividade no iOS e Android -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Chá de Panela - Daniel & Eduarda</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@300;400;700&display=swap');
         
-        {view === 'home' ? (
-          <div className="animate-in fade-in slide-in-from-bottom-12 duration-1000">
-            <div className="text-center mb-16">
-              <h2 className="text-2xl md:text-3xl font-serif text-[#1B365D] mb-4 flex items-center justify-center space-x-3">
-                <Sparkles size={20} className="text-[#FACC15]" />
-                <span>Nossa Lista de Presentes</span>
-                <Sparkles size={20} className="text-[#FACC15]" />
-              </h2>
-              <div className="h-1 w-12 bg-[#FACC15] mx-auto mb-4"></div>
-              <p className="text-[#1B365D]/60 italic font-sans text-sm text-center">Toque num balão para ver os itens do departamento</p>
-            </div>
-
-            {/* Grelha 2x2 Categorias */}
-            <div className="grid grid-cols-2 gap-6 md:gap-12 max-w-2xl mx-auto">
-              {CATEGORIES.map((cat) => (
-                <button
-                  key={cat.id}
-                  onClick={() => { setActiveCategory(cat); setView('category'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-                  className="group relative flex flex-col items-center justify-center aspect-square bg-white border-2 border-[#1B365D] rounded-[50px] md:rounded-[80px] p-6 transition-all duration-500 hover:bg-[#FDF9F0] hover:border-[#FACC15] hover:-translate-y-3 shadow-xl active:scale-95"
-                >
-                  <div className="w-16 h-16 md:w-24 md:h-24 rounded-full bg-[#1B365D] text-[#FACC15] flex items-center justify-center mb-6 transition-all group-hover:scale-110 group-hover:rotate-6 shadow-xl">
-                    <cat.icon size={32} strokeWidth={1.5} />
-                  </div>
-                  <h3 className="text-lg md:text-2xl font-serif text-[#1B365D] mb-1">{cat.name}</h3>
-                  <p className="text-[9px] md:text-[11px] uppercase tracking-widest text-[#1B365D]/40 font-sans font-black">
-                    {cat.description}
-                  </p>
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="animate-in slide-in-from-right-12 duration-700">
-            {/* Header da Subpágina com Linhas de Fundo */}
-            <div className="flex flex-col md:flex-row items-center justify-between mb-12 bg-[#1B365D] p-8 md:p-12 rounded-[50px] text-white shadow-2xl relative overflow-hidden pattern-blue">
-              <button 
-                onClick={() => setView('home')} 
-                className="flex items-center space-x-3 text-[#FACC15] hover:text-white transition-colors group px-6 py-3 border border-[#FACC15]/30 rounded-full mb-6 md:mb-0 relative z-10"
-              >
-                <ChevronLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
-                <span className="text-[11px] uppercase tracking-widest font-bold font-sans">Voltar ao Início</span>
-              </button>
-              <div className="text-center md:text-right relative z-10">
-                <h2 className="text-3xl md:text-5xl font-serif text-[#FACC15] mb-2">{activeCategory.name}</h2>
-                <div className="flex items-center justify-center md:justify-end space-x-2">
-                   <div className="h-2 w-2 rounded-full bg-[#FACC15] animate-ping"></div>
-                   <span className="text-[10px] uppercase tracking-widest font-black text-white/80">Disponíveis: {currentViewGifts.length}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Grelha 2x2 Itens */}
-            {currentViewGifts.length > 0 ? (
-              <div className="grid grid-cols-2 gap-6 md:gap-12">
-                {currentViewGifts.map((gift) => (
-                  <div key={gift.id} className="bg-white border-2 border-[#1B365D]/5 hover:border-[#1B365D] transition-all duration-500 rounded-[40px] overflow-hidden flex flex-col group shadow-md hover:shadow-2xl hover:-translate-y-2">
-                    <div className="relative aspect-square overflow-hidden bg-[#F7F3F0]">
-                      <img src={gift.image} alt={gift.title} className="w-full h-full object-cover transition-transform duration-[2.5s] group-hover:scale-110" />
-                      <div className="absolute top-4 left-4 bg-[#1B365D] text-[#FACC15] px-4 py-2 text-[9px] md:text-[11px] font-black font-sans tracking-widest rounded-full shadow-lg">
-                        {gift.price}
-                      </div>
-                    </div>
-                    <div className="p-6 md:p-10 text-center flex flex-col flex-grow">
-                      <h3 className="text-lg md:text-2xl font-serif text-[#1B365D] mb-4 h-12 flex items-center justify-center leading-tight">{gift.title}</h3>
-                      <p className="text-[10px] md:text-[12px] text-[#1B365D]/50 font-sans italic leading-relaxed mb-8 flex-grow line-clamp-3">{gift.description}</p>
-                      <button 
-                        onClick={() => { setSelectedGift(gift); setPixStep(false); }}
-                        className="w-full py-4 bg-[#FACC15] text-[#1B365D] text-[11px] uppercase tracking-[0.3em] font-black rounded-full hover:bg-[#1B365D] hover:text-white transition-all duration-300 font-sans shadow-lg active:scale-95"
-                      >
-                        Presentear
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="py-32 text-center bg-white border-2 border-dashed border-[#1B365D]/20 rounded-[60px] shadow-inner">
-                <Check className="w-12 h-12 text-[#FACC15] mx-auto mb-6" />
-                <h3 className="text-2xl font-serif text-[#1B365D]">Tudo Reservado!</h3>
-                <p className="text-[#1B365D]/40 text-sm mt-2 italic font-sans">Agradecemos de coração pelo carinho.</p>
-              </div>
-            )}
-          </div>
-        )}
-      </main>
-
-      {/* Modal Unificado */}
-      {selectedGift && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-[#1B365D]/70 backdrop-blur-md">
-          <div className="bg-white max-w-sm w-full p-10 md:p-12 relative animate-in zoom-in-95 duration-500 rounded-[50px] border-b-[10px] border-[#FACC15] shadow-2xl">
-            <button onClick={() => setSelectedGift(null)} className="absolute top-8 right-10 text-[#1B365D]/20 hover:text-[#1B365D] transition-colors"><X size={24} /></button>
-            
-            {!pixStep ? (
-              <div className="text-center font-sans animate-in fade-in">
-                <div className="w-16 h-16 bg-[#FDF9F0] rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
-                  <ShoppingBag size={28} className="text-[#FACC15]" />
-                </div>
-                <h2 className="text-2xl font-serif text-[#1B365D] mb-2 tracking-tight text-center">Finalizar Escolha</h2>
-                <p className="text-[10px] uppercase tracking-[0.3em] text-[#1B365D]/40 font-black mb-10 text-center">{selectedGift.title}</p>
-                
-                <div className="space-y-8">
-                  <div className="text-left border-b-2 border-[#1B365D]/5 pb-1">
-                    <label className="text-[9px] uppercase tracking-widest text-[#1B365D]/40 font-black block mb-2">Seu Nome / Família</label>
-                    <input 
-                      type="text" value={guestName} onChange={(e) => setGuestName(e.target.value)}
-                      placeholder="Ex: Família Rossi"
-                      className="w-full py-2 outline-none text-base text-[#1B365D] bg-transparent font-medium"
-                    />
-                  </div>
-                  <div className="space-y-4 pt-4">
-                    <button onClick={() => setPixStep(true)} className="w-full py-5 bg-[#1B365D] text-[#FACC15] text-[11px] uppercase tracking-[0.2em] font-black rounded-full shadow-xl hover:scale-[1.02] active:scale-95 transition-all relative overflow-hidden pattern-blue">Presentear via PIX</button>
-                    <button onClick={confirmReservation} disabled={!guestName.trim()} className="w-full py-5 border-2 border-[#1B365D]/10 text-[#1B365D] text-[11px] uppercase tracking-[0.2em] font-black rounded-full hover:bg-stone-50 disabled:opacity-20 transition-all">Apenas Reservar</button>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="text-center font-sans animate-in slide-in-from-right-12">
-                <h2 className="text-2xl font-serif text-[#1B365D] mb-4 text-center">Dados de Transferência</h2>
-                <div className="bg-[#FAF9F8] p-8 rounded-[40px] border-2 border-[#1B365D]/5 mb-8 shadow-inner">
-                  <QrCode size={100} className="mx-auto mb-6 text-[#1B365D]" strokeWidth={1} />
-                  <p className="text-[9px] uppercase text-[#1B365D]/40 mb-3 font-black tracking-widest text-center">Chave Pix</p>
-                  <div className="flex items-center justify-center space-x-2 bg-white px-5 py-3 border border-stone-100 rounded-full shadow-sm">
-                    <span className="text-[11px] font-mono text-[#1B365D] truncate max-w-[150px]">{pixKey}</span>
-                    <button onClick={copyPix} className="text-[#FACC15] hover:scale-125 transition-transform active:scale-90">
-                      {copied ? <Check size={16} className="text-green-600" /> : <Copy size={16} />}
-                    </button>
-                  </div>
-                </div>
-                <button onClick={confirmReservation} className="w-full py-5 bg-[#1B365D] text-[#FACC15] text-[11px] uppercase tracking-[0.2em] font-black rounded-full shadow-xl hover:scale-[1.02] transition-all relative overflow-hidden pattern-blue">Já realizei o Pix</button>
-                <button onClick={() => setPixStep(false)} className="mt-6 text-[10px] uppercase tracking-[0.3em] text-[#1B365D]/30 font-black hover:text-[#1B365D] text-center">Voltar</button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Rodapé com Linhas de Fundo */}
-      <footer className="py-32 bg-[#1B365D] text-white text-center border-t-[12px] border-[#FACC15] relative overflow-hidden pattern-blue">
-        <div className="relative z-10 max-w-lg mx-auto px-6 font-serif">
-          <div className="flex justify-center items-center space-x-6 mb-12">
-            <div className="h-[2px] w-12 bg-[#FACC15]/30"></div>
-            <span className="text-5xl text-[#FACC15] font-light italic">D & E</span>
-            <div className="h-[2px] w-12 bg-[#FACC15]/30"></div>
-          </div>
-          <p className="text-white/60 text-lg italic mb-12 leading-relaxed px-6 text-center">
-            "Para nós, o amor é a única coisa que cresce quando se reparte."
-          </p>
-          <div className="inline-block bg-[#FACC15] px-12 py-4 rounded-full text-[14px] uppercase tracking-[0.6em] text-[#1B365D] font-black font-sans shadow-2xl">
-            09.06.2026
-          </div>
-        </div>
-      </footer>
-
-      {/* Toast de Sucesso */}
-      {showSuccess && (
-        <div className="fixed bottom-12 left-1/2 -translate-x-1/2 z-50 bg-[#1B365D] text-[#FACC15] px-12 py-6 shadow-2xl flex items-center space-x-4 animate-in slide-in-from-bottom-20 rounded-full border-2 border-[#FACC15]/30">
-          <Heart size={20} className="fill-[#FACC15] text-[#FACC15] animate-pulse" />
-          <div className="flex flex-col text-left">
-            <span className="text-[12px] uppercase tracking-[0.3em] font-black">Grazie!</span>
-            <span className="text-[10px] text-white/60 uppercase tracking-widest font-sans">Daniel & Eduarda receberam o seu carinho.</span>
-          </div>
-        </div>
-      )}
-
-      <style dangerouslySetInnerHTML={{ __html: `
-        @keyframes float {
-          0%, 100% { transform: translateY(0) rotate(0deg); }
-          50% { transform: translateY(-20px) rotate(10deg); }
+        body { 
+            font-family: 'Montserrat', sans-serif; 
+            background-color: #FDFCFB; 
+            color: #1B365D; 
+            overflow-x: hidden;
+            /* Remove o highlight azul padrão do Android ao tocar */
+            -webkit-tap-highlight-color: transparent; 
         }
-        .animate-float {
-          animation: float 8s ease-in-out infinite;
-        }
+        
+        .font-serif { font-family: 'Playfair Display', serif; }
+        
+        /* Padrão de fundo azul */
         .pattern-blue {
-          background-image: repeating-linear-gradient(
-            -45deg,
-            rgba(255, 255, 255, 0.03),
-            rgba(255, 255, 255, 0.03) 1px,
-            transparent 1px,
-            transparent 12px
-          );
+            background-color: #1B365D;
+            background-image: repeating-linear-gradient(
+                -45deg,
+                rgba(255, 255, 255, 0.05),
+                rgba(255, 255, 255, 0.05) 1px,
+                transparent 1px,
+                transparent 12px
+            );
         }
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        .line-clamp-3 {
-          display: -webkit-box;
-          -webkit-line-clamp: 3;
-          -webkit-box-orient: vertical;
-          overflow: hidden;
-        }
-      `}} />
-    </div>
-  );
-}
 
-```
+        /* Animação de flutuação dos limões */
+        @keyframes float {
+            0%, 100% { transform: translateY(0) rotate(0deg); }
+            50% { transform: translateY(-15px) rotate(5deg); }
+        }
+        .animate-float { animation: float 6s ease-in-out infinite; }
+
+        /* Estilo das bolhas de categorias */
+        .category-bubble {
+            aspect-ratio: 1 / 1;
+            border-radius: 40px;
+            transition: all 0.4s ease;
+        }
+        @media (min-width: 768px) {
+            .category-bubble { border-radius: 65px; }
+        }
+
+        /* Estilo dos cartões de itens */
+        .item-card {
+            border-radius: 30px;
+            transition: all 0.3s ease;
+        }
+        @media (min-width: 768px) {
+            .item-card { border-radius: 45px; }
+        }
+
+        .line-clamp-2 {
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .modal-overlay {
+            background: rgba(27, 54, 93, 0.85);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Decoração Flutuante -->
+    <div class="fixed top-16 -left-8 animate-float opacity-20 pointer-events-none z-0">
+        <svg width="100" height="100" viewBox="0 0 100 100"><circle cx="50" cy="50" r="32" fill="#FACC15" /><path d="M50 18Q55 5 75 12" stroke="#4D7C0F" stroke-width="4" fill="none" stroke-linecap="round"/></svg>
+    </div>
+    <div class="fixed bottom-24 -right-10 animate-float opacity-20 pointer-events-none z-0" style="animation-delay: 2s">
+        <svg width="120" height="120" viewBox="0 0 100 100"><circle cx="50" cy="50" r="32" fill="#FACC15" /><path d="M50 18Q55 5 75 12" stroke="#4D7C0F" stroke-width="4" fill="none" stroke-linecap="round"/></svg>
+    </div>
+
+    <!-- Cabeçalho -->
+    <header class="relative pt-10 pb-12 text-center bg-white border-b-[6px] border-[#1B365D] shadow-xl z-10 px-4">
+        <div id="countdown-container" class="mb-5">
+            <div id="countdown" class="inline-flex items-center justify-center gap-2 bg-[#FDF9F0] border border-[#FACC15] px-6 py-2 rounded-full font-bold text-[10px] md:text-[12px] tracking-widest text-[#1B365D] shadow-sm">
+                <i data-lucide="calendar-heart" class="w-4 h-4 text-[#FACC15]"></i>
+                A CALCULAR...
+            </div>
+        </div>
+        <p class="text-[10px] md:text-xs italic text-[#1B365D]/60 font-black tracking-widest uppercase mb-3">Chá de Panela</p>
+        <h1 class="text-4xl md:text-7xl font-serif font-light text-[#1B365D] mb-4 leading-tight">Daniel & Eduarda</h1>
+        <div class="flex items-center justify-center gap-3 mb-2">
+            <div class="h-px w-6 bg-[#FACC15]"></div>
+            <p class="text-[9px] md:text-[11px] uppercase tracking-[0.4em] font-black opacity-60">09 de Junho de 2026</p>
+            <div class="h-px w-6 bg-[#FACC15]"></div>
+        </div>
+    </header>
+
+    <!-- Conteúdo Principal Dinâmico -->
+    <main id="main-content" class="max-w-4xl mx-auto px-4 md:px-6 py-12 relative z-10">
+        <!-- Renderizado por JS -->
+    </main>
+
+    <!-- Rodapé -->
+    <footer class="py-20 text-center text-white border-t-[10px] border-[#FACC15] pattern-blue relative overflow-hidden px-4">
+        <div class="relative z-10">
+            <div class="flex justify-center items-center gap-4 mb-8">
+                <div class="h-[2px] w-10 bg-[#FACC15]/40"></div>
+                <span class="text-4xl md:text-5xl font-serif text-[#FACC15] italic">D & E</span>
+                <div class="h-[2px] w-10 bg-[#FACC15]/40"></div>
+            </div>
+            <p class="text-white/70 text-sm md:text-lg italic mb-10 leading-relaxed max-w-sm mx-auto">"O amor é o ingrediente principal da nossa nova casa."</p>
+            <div class="inline-block bg-[#FACC15] text-[#1B365D] px-10 py-3 rounded-full font-black text-xs tracking-[0.4em] shadow-xl">09.06.2026</div>
+        </div>
+    </footer>
+
+    <!-- Modal Responsivo -->
+    <div id="modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-6 modal-overlay hidden">
+        <div class="bg-white max-w-sm w-full p-8 md:p-10 rounded-[40px] md:rounded-[50px] border-b-[8px] md:border-b-[12px] border-[#FACC15] shadow-2xl relative animate-in zoom-in-95 duration-200">
+            <button onclick="closeModal()" class="absolute top-6 right-6 p-2 text-[#1B365D]/30 hover:text-[#1B365D] active:scale-90 transition-all rounded-full bg-stone-50">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+            <div id="modal-content"></div>
+        </div>
+    </div>
+
+    <!-- Toast de Notificação -->
+    <div id="toast" class="fixed bottom-8 left-1/2 -translate-x-1/2 w-[90%] max-w-sm bg-[#1B365D] text-[#FACC15] px-6 py-4 rounded-[30px] shadow-2xl flex items-center gap-4 opacity-0 transition-all transform translate-y-10 pointer-events-none z-50 border border-[#FACC15]/30">
+        <div class="bg-[#FACC15] p-2 rounded-full shrink-0"><i data-lucide="heart" class="w-4 h-4 fill-[#1B365D] text-[#1B365D]"></i></div>
+        <div class="flex flex-col overflow-hidden">
+            <span class="text-[11px] font-black uppercase tracking-widest truncate">Agradecemos!</span>
+            <span class="text-[9px] text-white/80 uppercase truncate">Recebemos o seu presente.</span>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIGURAÇÃO E DADOS ---
+        const weddingDate = new Date('2026-06-09T00:00:00');
+        const pixKey = "62998808828";
+        
+        let state = {
+            view: 'home',
+            activeCategory: null,
+            selectedGift: null,
+            pixStep: false
+        };
+
+        const categories = [
+            { id: 'Cozinha', icon: 'utensils', label: 'Cozinha', desc: 'Panelas & Utensílios' },
+            { id: 'MesaPosta', icon: 'coffee', label: 'Mesa Posta', desc: 'Servir com Estilo' },
+            { id: 'Eletros', icon: 'zap', label: 'Eletros', desc: 'Praticidade Diária' },
+            { id: 'Quarto', icon: 'bed', label: 'Quarto', desc: 'Cama & Conforto' },
+            { id: 'Banheiro', icon: 'shower-head', label: 'Banheiro', desc: 'Banho & Higiene' },
+            { id: 'Decoracao', icon: 'palette', label: 'Decoração', desc: 'Detalhes do Lar' }
+        ];
+
+        // 30 Itens Exatos (Sem a palavra Siciliano e Sem Preços)
+        const gifts = [
+            // COZINHA
+            { id: 1, title: 'Conjunto de Panelas Antiaderentes', category: 'Cozinha', image: 'https://images.unsplash.com/photo-1584990344616-3b94b305740a?q=80&w=800&auto=format&fit=crop', desc: 'Praticidade para não grudar nada.' },
+            { id: 2, title: 'Jogo de Potes de Vidro Herméticos', category: 'Cozinha', image: 'https://images.unsplash.com/photo-1583337130417-3346a1be7dee?q=80&w=800&auto=format&fit=crop', desc: 'Para manter a despensa organizada.' },
+            { id: 3, title: 'Faqueiro Inox 72 Peças', category: 'Cozinha', image: 'https://images.unsplash.com/photo-1593611664162-ef3015de1c1c?q=80&w=800&auto=format&fit=crop', desc: 'Durabilidade e elegância nas refeições.' },
+            { id: 4, title: 'Conjunto de Assadeiras de Vidro', category: 'Cozinha', image: 'https://images.unsplash.com/photo-1588195538326-c5b1e9f80a1b?q=80&w=800&auto=format&fit=crop', desc: 'Perfeito para assados e sobremesas.' },
+            { id: 5, title: 'Kit Colheres de Silicone Premium', category: 'Cozinha', image: 'https://images.unsplash.com/photo-1556910103-1c02745a872e?q=80&w=800&auto=format&fit=crop', desc: 'Para não riscar as nossas panelas.' },
+
+            // MESA POSTA
+            { id: 6, title: 'Aparelho de Jantar 30 Peças', category: 'MesaPosta', image: 'https://images.unsplash.com/photo-1610701596007-11502861dcfa?q=80&w=800&auto=format&fit=crop', desc: 'Louça completa para receber a família.' },
+            { id: 7, title: 'Jogo de Taças de Cristal', category: 'MesaPosta', image: 'https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?q=80&w=800&auto=format&fit=crop', desc: 'Para brindarmos momentos felizes.' },
+            { id: 8, title: 'Kit Sousplat de Rattan', category: 'MesaPosta', image: 'https://images.unsplash.com/photo-1606859191214-25806e8e2423?q=80&w=800&auto=format&fit=crop', desc: 'Charme rústico para a nossa mesa.' },
+            { id: 9, title: 'Tábua de Frios em Bambu', category: 'MesaPosta', image: 'https://images.unsplash.com/photo-1533090161767-e6ffed986c88?q=80&w=800&auto=format&fit=crop', desc: 'Ideal para noites de queijos e vinhos.' },
+            { id: 10, title: 'Conjunto de Xícaras de Chá', category: 'MesaPosta', image: 'https://images.unsplash.com/photo-1577937927133-66ef06acdf18?q=80&w=800&auto=format&fit=crop', desc: 'Para os lanches da tarde perfeitos.' },
+
+            // ELETROS
+            { id: 11, title: 'Air Fryer 5L Preto/Inox', category: 'Eletros', image: 'https://images.unsplash.com/photo-1628840042765-356cda07504e?q=80&w=800&auto=format&fit=crop', desc: 'Praticidade e refeições saudáveis.' },
+            { id: 12, title: 'Cafeteira Espresso Moderna', category: 'Eletros', image: 'https://images.unsplash.com/photo-1517088455889-bfa75135412c?q=80&w=800&auto=format&fit=crop', desc: 'O café quentinho de todas as manhãs.' },
+            { id: 13, title: 'Liquidificador Alta Potência', category: 'Eletros', image: 'https://images.unsplash.com/photo-1585237401525-4c0429fec81e?q=80&w=800&auto=format&fit=crop', desc: 'Velocidade para sumos e receitas.' },
+            { id: 14, title: 'Batedeira Planetária', category: 'Eletros', image: 'https://images.unsplash.com/photo-1594385208974-2e75f9d8a847?q=80&w=800&auto=format&fit=crop', desc: 'Para preparar bolos e massas incríveis.' },
+            { id: 15, title: 'Mixer de Mão 3 em 1', category: 'Eletros', image: 'https://images.unsplash.com/photo-1585515320310-259814833e62?q=80&w=800&auto=format&fit=crop', desc: 'Utensílio rápido para o dia a dia.' },
+
+            // QUARTO
+            { id: 16, title: 'Jogo de Cama Casal 400 Fios', category: 'Quarto', image: 'https://images.unsplash.com/photo-1522771739844-6a9f6d5f14af?q=80&w=800&auto=format&fit=crop', desc: 'Conforto suave para noites tranquilas.' },
+            { id: 17, title: 'Edredom Casal Matelassê', category: 'Quarto', image: 'https://images.unsplash.com/photo-1632323344907-6e9930ebabb5?q=80&w=800&auto=format&fit=crop', desc: 'Maciez e elegância para o inverno.' },
+            { id: 18, title: 'Par de Travesseiros Anatômicos', category: 'Quarto', image: 'https://images.unsplash.com/photo-1584100936595-c0654b55a2e2?q=80&w=800&auto=format&fit=crop', desc: 'Apoio perfeito para um bom sono.' },
+            { id: 19, title: 'Manta Decorativa Tricot', category: 'Quarto', image: 'https://images.unsplash.com/photo-1580828369062-84196d445c48?q=80&w=800&auto=format&fit=crop', desc: 'Para aquecer as nossas noites de filme.' },
+            { id: 20, title: 'Protetor de Colchão Impermeável', category: 'Quarto', image: 'https://images.unsplash.com/photo-1629198688000-71f23e745b6e?q=80&w=800&auto=format&fit=crop', desc: 'Higiene e cuidado com a nossa cama.' },
+
+            // BANHEIRO
+            { id: 21, title: 'Jogo de Toalhas 5 Peças', category: 'Banheiro', image: 'https://images.unsplash.com/photo-1560343776-97e7d202ff0e?q=80&w=800&auto=format&fit=crop', desc: 'Toalhas macias de fio penteado.' },
+            { id: 22, title: 'Kit Lavabo Cerâmica 3 Peças', category: 'Banheiro', image: 'https://images.unsplash.com/photo-1620626011761-9963d7b59a7a?q=80&w=800&auto=format&fit=crop', desc: 'Organização e estilo para a bancada.' },
+            { id: 23, title: 'Par de Roupões Microfibra', category: 'Banheiro', image: 'https://images.unsplash.com/photo-1584984275066-8573c246f6dc?q=80&w=800&auto=format&fit=crop', desc: 'O máximo conforto pós-banho.' },
+            { id: 24, title: 'Cesto de Roupas em Bambu', category: 'Banheiro', image: 'https://images.unsplash.com/photo-1602016738914-523c914b1b36?q=80&w=800&auto=format&fit=crop', desc: 'Design limpo e funcionalidade.' },
+            { id: 25, title: 'Tapete Antiderrapante Felpudo', category: 'Banheiro', image: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?q=80&w=800&auto=format&fit=crop', desc: 'Segurança e pés secos.' },
+
+            // DECORAÇÃO
+            { id: 26, title: 'Luminária de Mesa Moderna', category: 'Decoracao', image: 'https://images.unsplash.com/photo-1507473885765-e6ed057f782c?q=80&w=800&auto=format&fit=crop', desc: 'Iluminação indireta e aconchegante.' },
+            { id: 27, title: 'Vaso Decorativo Âmbar', category: 'Decoracao', image: 'https://images.unsplash.com/photo-1581783898377-1c85bf937427?q=80&w=800&auto=format&fit=crop', desc: 'Para enchermos a casa de flores.' },
+            { id: 28, title: 'Difusor de Aromas Elétrico', category: 'Decoracao', image: 'https://images.unsplash.com/photo-1608528577891-eb05ebec2108?q=80&w=800&auto=format&fit=crop', desc: 'Para deixar o lar sempre perfumado.' },
+            { id: 29, title: 'Bandeja Espelhada', category: 'Decoracao', image: 'https://images.unsplash.com/photo-1601660991965-0fcb29bde8cb?q=80&w=800&auto=format&fit=crop', desc: 'Ideal para decorar ou servir bebidas.' },
+            { id: 30, title: 'Relógio de Parede Minimalista', category: 'Decoracao', image: 'https://images.unsplash.com/photo-1508013861974-9f6347163ebe?q=80&w=800&auto=format&fit=crop', desc: 'Para nunca perdermos a hora.' }
+        ];
+
+        // --- FUNÇÕES DE LÓGICA CORE ---
+        function init() {
+            updateCountdown();
+            render();
+            setInterval(updateCountdown, 60000); // Atualiza a cada 1 minuto
+        }
+
+        function updateCountdown() {
+            const now = new Date();
+            const diff = weddingDate.getTime() - now.getTime();
+            const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+            document.getElementById('countdown').innerHTML = `<i data-lucide="calendar-heart" class="w-4 h-4 text-[#FACC15]"></i> FALTAM ${days} DIAS`;
+            lucide.createIcons();
+        }
+
+        function render() {
+            const container = document.getElementById('main-content');
+            
+            if (state.view === 'home') {
+                container.innerHTML = `
+                    <div class="text-center mb-10 md:mb-14">
+                        <h2 class="text-2xl md:text-3xl font-serif text-[#1B365D] mb-3">Departamentos</h2>
+                        <div class="w-12 h-1 bg-[#FACC15] mx-auto mb-4"></div>
+                        <p class="text-[9px] md:text-[10px] uppercase font-black tracking-widest opacity-40">Toque para ver a lista</p>
+                    </div>
+                    <!-- Grelha Rigorosa 2x2 para todos os ecrãs -->
+                    <div class="grid grid-cols-2 gap-4 md:gap-8 max-w-2xl mx-auto">
+                        ${categories.map(cat => `
+                            <button onclick="navigate('${cat.id}')" class="category-bubble bg-white border-2 border-[#1B365D]/10 p-5 md:p-8 flex flex-col items-center justify-center transition-all hover:bg-[#FDF9F0] hover:border-[#FACC15] active:scale-95 shadow-sm">
+                                <div class="w-12 h-12 md:w-16 md:h-16 bg-[#1B365D] text-[#FACC15] rounded-full flex items-center justify-center mb-3 md:mb-4 shadow-md">
+                                    <i data-lucide="${cat.icon}" class="w-6 h-6 md:w-8 md:h-8"></i>
+                                </div>
+                                <span class="text-base md:text-xl font-serif mb-1 leading-tight">${cat.label}</span>
+                                <span class="text-[8px] md:text-[9px] uppercase tracking-widest font-black opacity-30 text-center leading-tight hidden md:block">${cat.desc}</span>
+                            </button>
+                        `).join('')}
+                    </div>
+                `;
+            } else {
+                const categoryGifts = gifts.filter(g => g.category === state.activeCategory);
+                const catInfo = categories.find(c => c.id === state.activeCategory);
+                
+                container.innerHTML = `
+                    <div class="flex flex-col items-center mb-10 bg-[#1B365D] p-6 md:p-10 rounded-[30px] md:rounded-[40px] text-white shadow-xl pattern-blue">
+                        <button onclick="goHome()" class="flex items-center gap-2 text-[#FACC15] text-[10px] font-black uppercase tracking-widest border border-[#FACC15]/30 px-5 py-2 rounded-full active:bg-white/10 transition-all mb-4 self-start">
+                            <i data-lucide="chevron-left" class="w-4 h-4"></i> Voltar
+                        </button>
+                        <div class="text-center w-full">
+                            <h2 class="text-2xl md:text-4xl font-serif text-[#FACC15] mb-2">${catInfo.label}</h2>
+                            <p class="text-[9px] font-bold opacity-80 tracking-widest uppercase">${categoryGifts.length} Opções Disponíveis</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Grelha Rigorosa 2x2 para Itens -->
+                    <div class="grid grid-cols-2 gap-4 md:gap-8">
+                        ${categoryGifts.map(gift => `
+                            <div class="item-card bg-white border border-[#1B365D]/10 overflow-hidden flex flex-col active:border-[#1B365D]/30 transition-all shadow-sm pb-4">
+                                <div class="aspect-square relative overflow-hidden bg-[#F7F3F0]">
+                                    <img src="${gift.image}" loading="lazy" class="w-full h-full object-cover transition-transform duration-[2s]">
+                                </div>
+                                <div class="px-3 pt-4 pb-2 md:px-6 md:pt-6 md:pb-4 text-center flex flex-col flex-grow">
+                                    <h3 class="text-sm md:text-lg font-serif mb-2 text-[#1B365D] leading-tight line-clamp-2 h-10 md:h-12 flex items-center justify-center">${gift.title}</h3>
+                                    <p class="text-[9px] md:text-[11px] opacity-50 italic mb-4 md:mb-6 line-clamp-2 leading-relaxed flex-grow">${gift.desc}</p>
+                                    <button onclick="openModal(${gift.id})" class="w-full py-3 md:py-4 bg-[#FACC15] text-[#1B365D] rounded-full text-[9px] md:text-[10px] font-black uppercase tracking-widest shadow-sm active:scale-95 transition-transform">Escolher</button>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+            lucide.createIcons();
+        }
+
+        // --- NAVEGAÇÃO E MODAL ---
+        function navigate(catId) {
+            state.view = 'category';
+            state.activeCategory = catId;
+            render();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function goHome() {
+            state.view = 'home';
+            state.activeCategory = null;
+            render();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function openModal(giftId) {
+            state.selectedGift = gifts.find(g => g.id === giftId);
+            state.pixStep = false;
+            document.getElementById('modal').classList.remove('hidden');
+            updateModalUI();
+        }
+
+        function closeModal() {
+            document.getElementById('modal').classList.add('hidden');
+        }
+
+        function updateModalUI() {
+            const body = document.getElementById('modal-content');
+            if (!state.pixStep) {
+                body.innerHTML = `
+                    <div class="text-center font-sans">
+                        <div class="w-16 h-16 md:w-20 md:h-20 bg-[#FDF9F0] rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner text-[#FACC15]">
+                            <i data-lucide="shopping-bag" class="w-8 h-8 md:w-10 md:h-10"></i>
+                        </div>
+                        <h2 class="text-xl md:text-2xl font-serif text-[#1B365D] mb-2">Finalizar Escolha</h2>
+                        <p class="text-[9px] md:text-[10px] font-black opacity-40 uppercase tracking-widest mb-8 line-clamp-2">${state.selectedGift.title}</p>
+                        
+                        <div class="text-left mb-8">
+                            <label class="text-[9px] font-black opacity-50 uppercase ml-2 mb-1 block">Seu Nome / Família</label>
+                            <input type="text" id="guest-name-input" placeholder="Ex: Maria Santos" class="w-full border-b-2 border-[#1B365D]/10 py-2 md:py-3 px-2 outline-none focus:border-[#FACC15] bg-transparent text-sm text-[#1B365D]">
+                        </div>
+                        
+                        <div class="space-y-3">
+                            <button onclick="goToPix()" class="w-full py-4 bg-[#1B365D] text-[#FACC15] rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg pattern-blue active:scale-95 transition-transform">Presentear via PIX</button>
+                            <button onclick="confirmSuccess()" class="w-full py-4 border-2 border-[#1B365D]/10 rounded-full text-[10px] font-black uppercase tracking-widest text-[#1B365D] active:bg-stone-50 transition-colors">Apenas Reservar</button>
+                        </div>
+                    </div>
+                `;
+            } else {
+                body.innerHTML = `
+                    <div class="text-center font-sans">
+                        <h2 class="text-xl md:text-2xl font-serif text-[#1B365D] mb-2">Dados de Pagamento</h2>
+                        <p class="text-[10px] text-[#1B365D]/50 italic mb-6">Valor: À sua escolha</p>
+                        
+                        <div class="bg-[#FAF9F8] p-6 rounded-[30px] border border-[#1B365D]/10 mb-6 shadow-inner">
+                            <div class="w-24 h-24 md:w-28 md:h-28 bg-white border border-[#1B365D]/10 mx-auto mb-4 flex items-center justify-center p-3">
+                                <i data-lucide="qr-code" class="w-16 h-16 text-[#1B365D]/20"></i>
+                            </div>
+                            <p class="text-[8px] uppercase font-black opacity-40 mb-2 tracking-widest">Toque para copiar a chave</p>
+                            
+                            <button onclick="copyKey()" class="w-full bg-white p-3 rounded-full border border-[#1B365D]/10 flex items-center justify-between px-4 shadow-sm active:border-[#FACC15] transition-colors group">
+                                <span class="text-[10px] md:text-[11px] font-mono font-bold text-[#1B365D] truncate">${pixKey}</span>
+                                <i data-lucide="copy" class="w-4 h-4 text-[#FACC15] group-active:scale-110 transition-transform"></i>
+                            </button>
+                        </div>
+                        
+                        <button onclick="confirmSuccess()" class="w-full py-4 bg-[#1B365D] text-[#FACC15] rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg pattern-blue active:scale-95 transition-transform">Já realizei o Pix</button>
+                        <button onclick="backToSelection()" class="mt-5 text-[9px] font-black opacity-40 uppercase tracking-widest p-2">Voltar</button>
+                    </div>
+                `;
+            }
+            lucide.createIcons();
+        }
+
+        function goToPix() {
+            const name = document.getElementById('guest-name-input').value;
+            if(!name.trim()) {
+                // Pequeno feedback visual para o input vazio em mobile
+                document.getElementById('guest-name-input').style.borderColor = 'red';
+                setTimeout(()=> document.getElementById('guest-name-input').style.borderColor = '', 1000);
+                return;
+            }
+            state.pixStep = true;
+            updateModalUI();
+        }
+
+        function backToSelection() {
+            state.pixStep = false;
+            updateModalUI();
+        }
+
+        function confirmSuccess() {
+            closeModal();
+            // Remove o item do array para simular que já foi escolhido
+            const index = gifts.findIndex(g => g.id === state.selectedGift.id);
+            if(index > -1) gifts.splice(index, 1);
+            
+            render(); // Atualiza a grelha
+            
+            const toast = document.getElementById('toast');
+            toast.style.opacity = '1';
+            toast.style.transform = 'translate(-50%, -20px)';
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translate(-50%, 40px)';
+            }, 4000);
+        }
+
+        // Função de cópia robusta para iOS e Android
+        function copyKey() {
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(pixKey).then(() => {
+                    showCopyFeedback();
+                }).catch(err => {
+                    fallbackCopyTextToClipboard();
+                });
+            } else {
+                fallbackCopyTextToClipboard();
+            }
+        }
+
+        function fallbackCopyTextToClipboard() {
+            const textArea = document.createElement("textarea");
+            textArea.value = pixKey;
+            textArea.style.position = "fixed";
+            textArea.style.top = "0";
+            textArea.style.left = "0";
+            textArea.style.width = "2em";
+            textArea.style.height = "2em";
+            textArea.style.padding = "0";
+            textArea.style.border = "none";
+            textArea.style.outline = "none";
+            textArea.style.boxShadow = "none";
+            textArea.style.background = "transparent";
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                showCopyFeedback();
+            } catch (err) {
+                console.error('Erro ao copiar', err);
+            }
+            document.body.removeChild(textArea);
+        }
+
+        function showCopyFeedback() {
+            const btn = document.querySelector('button[onclick="copyKey()"] i');
+            if(btn) {
+                const originalIcon = btn.getAttribute('data-lucide');
+                btn.setAttribute('data-lucide', 'check');
+                btn.classList.add('text-green-500');
+                lucide.createIcons();
+                setTimeout(() => {
+                    btn.setAttribute('data-lucide', originalIcon);
+                    btn.classList.remove('text-green-500');
+                    lucide.createIcons();
+                }, 2000);
+            }
+        }
+
+        // --- INICIAR APP ---
+        window.onload = init;
+    </script>
+</body>
+</html>
