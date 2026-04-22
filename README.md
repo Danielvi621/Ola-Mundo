@@ -70,7 +70,7 @@ export default function App() {
   const [daysLeft, setDaysLeft] = useState(0);
 
   const weddingDate = new Date('2026-06-09T00:00:00');
-  const pixKey = "daniel.eduarda@meu-casamento.com.br";
+  const pixKey = "62998808828";
 
   useEffect(() => {
     const calculate = () => {
@@ -143,7 +143,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#FDFCFB] text-[#1B365D] font-serif relative overflow-x-hidden selection:bg-[#FACC15]/30">
-      
+
       {/* Elementos Decorativos de Fundo */}
       <FloatingElement className="-left-10 top-20" delay="0s"><LemonSVG /></FloatingElement>
       <FloatingElement className="-right-10 top-60" delay="2s"><LemonSVG /></FloatingElement>
